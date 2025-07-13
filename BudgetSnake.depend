@@ -1,0 +1,9 @@
+# depslib dependency file v1.0
+1751302876 source:d:\c+++\c++\antonsegnacoolaspel\budgetsnake\main.cpp
+	<iostream>
+	<windows.h>
+	<string>
+	<thread>
+
+1751038873 source:d:\c+++\c++\antonsegnacoolaspel\budgetsnake\recources.rc
+

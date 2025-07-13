@@ -1,0 +1,436 @@
+#include <iostream>
+#include <windows.h>
+#include <string>
+#include <thread>   // For soundeffects
+
+using namespace std;
+
+enum Direction { NONE, UP, DOWN, LEFT, RIGHT }; // Use enum to lessen the amount of if-statements
+
+void CrunchV() {
+    PlaySound("NewCrunch.wav", NULL, SND_FILENAME|SND_ASYNC);
+}
+void GameOverV() {
+    PlaySound("GameOver.wav", NULL, SND_FILENAME|SND_ASYNC);
+}
+void BreakV() {
+    PlaySound("Break.wav", NULL, SND_FILENAME|SND_ASYNC);
+}
+
+// Collision
+const int WallUp    { 4 };
+const int WallDown  { 26 };
+const int WallRight { 79 };
+const int WallLeft  { 36 };
+
+void Draw(string Str, int X, int Y, WORD color); // Need this and the Collision before the classes
+
+class ClassPlayer
+{
+public:
+    // Start position
+    int PlayerX { 60 };
+    int PlayerY { 15 };
+
+    // Start speed
+    int PlayerSpeed { 90 };
+
+    Direction direction = NONE;
+
+    void MovePlayerUp()    { PlayerY--; }
+    void MovePlayerDown()  { PlayerY++; }
+    void MovePlayerRight() { PlayerX++; }
+    void MovePlayerLeft()  { PlayerX--; }
+
+    void Move()
+    {
+        switch(direction)
+        {
+            case UP:    MovePlayerUp();    break;
+            case DOWN:  MovePlayerDown();  break;
+            case LEFT:  MovePlayerLeft();  break;
+            case RIGHT: MovePlayerRight(); break;
+            default: break;
+        }
+    }
+    void DrawPlayer()  { Draw("  ", PlayerX, PlayerY, 144); }
+    void ErasePlayer() { Draw("  ", PlayerX, PlayerY, 0);   }
+};
+
+class ClassApple
+{
+public:
+    int AppleX{};
+    int AppleY{};
+
+    void Respawn()
+    {
+        // Add do while loop so it doesn't spawn inside the walls
+        // do while loop is like a while loop but ALWAYS runs atleast once
+        do
+        {
+            AppleX = rand() % (WallRight - WallLeft - 1) + WallLeft + 1;
+            AppleY = rand() % (WallDown - WallUp - 1) + WallUp + 1;
+        }
+        while((AppleX == WallLeft + 1) || (AppleX == WallRight - 1) || (AppleY == WallUp + 1) || (AppleY == WallDown - 1));
+    }
+
+    void DrawApple()  { Draw("  ", AppleX, AppleY, 64); }
+    void EraseApple() { Draw("  ", AppleX, AppleY, 0);  }
+
+};
+
+void DrawBackground(void);
+void DrawMenu(void);
+
+void UpdateTimers(void);
+
+int PlayerTimer1{};
+int PlayerTimer2{};
+int PlayerElapsed{};
+
+int AppleTimer1{};
+int AppleTimer2{};
+int AppleElapsed{};
+
+int Score{};
+int VisualSpeed{ 1 };
+
+bool GameOver = false;
+bool DoOnce = false;
+
+void HandleInput(void);
+void UpdatePlayer(void);
+void CheckAppleCollision(void);
+void CheckWallCollision(void);
+void IncreasePlayerSpeed(void);
+
+ClassApple apple;
+ClassPlayer player;
+
+int main()
+{
+    srand(GetTickCount());
+    DrawMenu();
+    PlayerTimer1 = GetTickCount();      // Start Player timer
+    AppleTimer1 = GetTickCount();       // Start Apple timer
+
+    while(1) // Game Loop
+    {
+        UpdateTimers();
+        HandleInput();
+        UpdatePlayer();
+        CheckAppleCollision();
+        CheckWallCollision();
+        IncreasePlayerSpeed();
+    }
+}
+
+void IncreasePlayerSpeed()
+{
+    if((AppleElapsed > 3000) && (VisualSpeed < 16) && (player.direction != NONE)) // Increase player speed, if you are moving
+    {
+        // Ugly fix- because visualspeed and playerspeed increases to two while standing still, why idk
+        if(!DoOnce)
+        {
+            player.PlayerSpeed += 5;
+            VisualSpeed--;
+            DoOnce = true;
+        }
+        player.PlayerSpeed -= 5;
+        VisualSpeed++;
+        // Reset timer
+        AppleTimer1 = GetTickCount();
+        AppleElapsed = 0;
+    }
+}
+
+void CheckWallCollision()
+{
+    if((player.PlayerX == WallRight - 1) || (player.PlayerX == WallLeft + 1) || (player.PlayerY == WallUp) || (player.PlayerY == WallDown))
+    {
+        thread BreakT(BreakV);
+        Sleep(1000);
+        BreakT.join();
+        thread GameOverT(GameOverV);
+
+        GameOver = true;
+        DoOnce = false;
+
+        DrawMenu();
+        GameOverT.join();
+    }
+}
+
+void CheckAppleCollision()
+{
+    if((player.PlayerX == apple.AppleX) && (player.PlayerY == apple.AppleY))
+    {
+        thread CrunchT(CrunchV);
+        Score++;
+        apple.EraseApple();
+        apple.Respawn();
+        CrunchT.join();
+    }
+}
+
+void UpdatePlayer()
+{
+    if ((PlayerElapsed > player.PlayerSpeed) && (player.direction != NONE))
+    {
+        player.ErasePlayer();
+        player.Move();
+        DrawBackground(); // Redraw the map because the player erases it
+        player.DrawPlayer();
+        apple.DrawApple(); // Redraw apple so it doesn't get half eaten
+
+        // Reset timer
+        PlayerTimer1 = GetTickCount();
+        PlayerElapsed = 0;
+    }
+}
+
+void HandleInput()
+{
+    if (GetAsyncKeyState(0x57) && player.direction != DOWN)        // W
+        player.direction = UP;
+    else if (GetAsyncKeyState(0x53) && player.direction != UP)     // S
+        player.direction = DOWN;
+    else if (GetAsyncKeyState(0x41) && player.direction != RIGHT)  // A
+        player.direction = LEFT;
+    else if (GetAsyncKeyState(0x44) && player.direction != LEFT)   // D
+        player.direction = RIGHT;
+}
+
+void UpdateTimers()
+{
+    PlayerTimer2 = GetTickCount();                             // Player timer stuff
+    PlayerElapsed =  PlayerTimer2 - PlayerTimer1;             // Player timer stuff
+    AppleTimer2 = GetTickCount();                              // Apple timer stuff
+    AppleElapsed =  AppleTimer2 - AppleTimer1;                // Apple timer stuff
+}
+
+void DrawMenu()
+{
+    // Animation
+    for(int X { 16 }, Y = 3; Y < 29; X++)
+    {
+        Draw(" ", X, Y, 176);
+        if(X == 105)
+        {
+            Sleep(1);
+            Y++;
+            X = 15; // 15, Otherwise weird
+        }
+    }
+
+    Draw("Press       to Start", 20, 25, 190);
+    Draw("SPACE", 26, 25, 246);
+
+    if(GameOver == true)
+    {
+        Draw("      ", 20, 6, 224);
+        Draw("  ", 20, 7, 224);
+        Draw("  ", 20, 8, 224);
+        Draw("  ", 20, 9, 224);
+        Draw("      ", 20, 10, 224);
+        Draw("  ", 24, 8, 224);
+        Draw("  ", 24, 9, 224);
+
+        Draw("      ", 28, 6, 224);
+        Draw("  ", 28, 7, 224);
+        Draw("      ", 28, 8, 224);
+        Draw("  ", 28, 9, 224);
+        Draw("  ", 28, 10, 224);
+        Draw("  ", 32, 7, 224);
+        Draw("  ", 32, 9, 224);
+        Draw("  ", 32, 10, 224);
+
+        Draw("          ", 36, 6, 224);
+        Draw("  ", 36, 7, 224);
+        Draw("  ", 36, 8, 224);
+        Draw("  ", 36, 9, 224);
+        Draw("  ", 36, 10, 224);
+        Draw("  ", 40, 7, 224);
+        Draw("  ", 40, 8, 224);
+        Draw("  ", 40, 9, 224);
+        Draw("  ", 40, 10, 224);
+        Draw("  ", 44, 7, 224);
+        Draw("  ", 44, 8, 224);
+        Draw("  ", 44, 9, 224);
+        Draw("  ", 44, 10, 224);
+
+        Draw("      ", 48, 6, 224);
+        Draw("  ", 48, 7, 224);
+        Draw("      ", 48, 8, 224);
+        Draw("  ", 48, 9, 224);
+        Draw("      ", 48, 10, 224);
+
+        Draw("      ", 58, 6, 224);
+        Draw("  ", 58, 7, 224);
+        Draw("  ", 58, 8, 224);
+        Draw("  ", 58, 9, 224);
+        Draw("      ", 58, 10, 224);
+        Draw("  ", 62, 8, 224);
+        Draw("  ", 62, 9, 224);
+        Draw("  ", 62, 7, 224);
+
+        Draw("  ", 66, 6, 224);
+        Draw("  ", 66, 7, 224);
+        Draw("  ", 66, 8, 224);
+        Draw("  ", 66, 9, 224);
+        Draw("  ", 68, 10, 224);
+        Draw("  ", 70, 6, 224);
+        Draw("  ", 70, 7, 224);
+        Draw("  ", 70, 8, 224);
+        Draw("  ", 70, 9, 224);
+
+        Draw("      ", 74, 6, 224);
+        Draw("  ", 74, 7, 224);
+        Draw("      ", 74, 8, 224);
+        Draw("  ", 74, 9, 224);
+        Draw("      ", 74, 10, 224);
+
+        Draw("      ", 82, 6, 224);
+        Draw("  ", 82, 7, 224);
+        Draw("  ", 82, 8, 224);
+        Draw("      ", 82, 9, 224);
+        Draw("  ", 82, 10, 224);
+        Draw("  ", 88, 7, 224);
+        Draw("  ", 88, 8, 224);
+        Draw("  ", 88, 10, 224);
+
+        Draw("Score:", 20, 15, 190);
+        Draw(" ", 26, 15, 180);
+        cout << Score << endl;
+        Draw("Speed:", 20, 17, 190);
+        Draw(" ", 26, 17, 189);
+        cout << VisualSpeed << "x" << endl;
+
+        // Stop player movement
+        player.direction = NONE;
+
+        // Reset player and apple position
+        player.PlayerX = 60;
+        player.PlayerY = 15;
+
+        // Reset Visual Scores
+        Score = 0;
+        VisualSpeed = 1;
+
+        // Reset timer
+        AppleTimer1 = GetTickCount();
+        AppleElapsed = 0;
+        PlayerTimer1 = GetTickCount();
+        PlayerElapsed = 0;
+
+    }
+    else if(GameOver == false)
+    {
+        Draw("    ", 20, 6, 224);
+        Draw("  ", 20, 7, 224);
+        Draw("    ", 20, 8, 224);
+        Draw("  ", 20, 9, 224);
+        Draw("    ", 20, 10, 224);
+        Draw("  ", 24, 7, 224);
+        Draw("  ", 24, 9, 224);
+
+        Draw("  ", 28, 6, 224);
+        Draw("  ", 28, 7, 224);
+        Draw("  ", 28, 8, 224);
+        Draw("  ", 28, 9, 224);
+        Draw("      ", 28, 10, 224);
+        Draw("  ", 32, 6, 224);
+        Draw("  ", 32, 7, 224);
+        Draw("  ", 32, 8, 224);
+        Draw("  ", 32, 9, 224);
+
+        Draw("    ", 36, 6, 224);
+        Draw("  ", 36, 7, 224);
+        Draw("  ", 36, 8, 224);
+        Draw("  ", 36, 9, 224);
+        Draw("    ", 36, 10, 224);
+        Draw("  ", 40, 7, 224);
+        Draw("  ", 40, 8, 224);
+        Draw("  ", 40, 9, 224);
+
+        Draw("      ", 44, 6, 224);
+        Draw("  ", 44, 7, 224);
+        Draw("  ", 44, 8, 224);
+        Draw("  ", 44, 9, 224);
+        Draw("      ", 44, 10, 224);
+        Draw("  ", 48, 8, 224);
+        Draw("  ", 48, 9, 224);
+
+        Draw("      ", 52, 6, 224);
+        Draw("  ", 52, 7, 224);
+        Draw("      ", 52, 8, 224);
+        Draw("  ", 52, 9, 224);
+        Draw("      ", 52, 10, 224);
+
+        Draw("      ", 60, 6, 224);
+        Draw("  ", 62, 7, 224);
+        Draw("  ", 62, 8, 224);
+        Draw("  ", 62, 9, 224);
+        Draw("  ", 62, 10, 224);
+
+        Draw("SNAKE", 66, 10, 190);
+
+        Draw("Use WASD to move", 20, 17, 190);
+        Draw("Don't touch the WALLS!", 20, 19, 190);
+    }
+
+    while(!GetAsyncKeyState(0x20)) // Wait for input to continue (space)
+        Sleep(10);
+
+    // Erase all graphics
+    for(int i{}; i < 31; i++)
+    {
+        Draw("                                                                                                            ", 0, i, 0);
+    }
+
+    apple.Respawn();
+
+    // Reset player speed
+    player.PlayerSpeed = 90;
+
+    DrawBackground();
+
+    player.DrawPlayer();
+    apple.DrawApple();
+
+    Sleep(500);
+}
+
+void DrawBackground()
+{
+    Draw("Score:", 38, 3, 15);
+    Draw(" ", 44, 3, 4);
+    cout << Score << endl;
+    Draw("Speed:", 50, 3, 15);
+    Draw(" ", 56, 3, 13);
+    cout << VisualSpeed << endl;
+
+    //Top and bottom walls
+    Draw("                                             ", WallLeft, WallUp, 240);
+    Draw("                                             ", WallLeft, WallDown, 240);
+
+    // Create walls, for loop instead of 10000 draw functions
+    // Side walls and green
+    for(int L {5}; L < 26; L++)
+    {
+        Draw("  ", WallLeft, L, 240);
+        Draw("  ", WallRight, L, 240);
+        Draw("                                         ", WallLeft + 2, L, 160);
+    }
+}
+
+void Draw(string Str, int X, int Y, WORD color)
+{
+    HANDLE OutputH;
+    COORD position = { static_cast<SHORT>(X), static_cast<SHORT>(Y) };
+    OutputH = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(OutputH, color);
+    SetConsoleCursorPosition(OutputH, position);
+    cout << Str;
+}
